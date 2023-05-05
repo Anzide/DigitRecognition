@@ -195,28 +195,28 @@ struct Matrix {
 
 };
 
-//打印图片
-void printImage(Matrix &img) {
-    for (int i = 0; i < IMAGE_ROW; i++) {
-        for (int j = 0; j < IMAGE_COL; j++) {
-            printf("%.2lf ", img[IMAGE_COL * i + j][0]);
-        }
-        cout << endl;
-    }
-}
-
-//数据点
+// 数据
 struct Point {
+    uint8_t num;
     Matrix image;
     Matrix label;
 
-    Point(const char *image, uint8_t num) {
+    Point(const char *image, uint8_t _num) {
         this->image.resize(IMAGE_SIZE, 1);
         for (int i = 0; i < IMAGE_SIZE; i++) {
             this->image[i][0] = (uint8_t) image[i];
         }
+        num = _num;
         label.resize(OUT_SIZE, 1, 0);
         label[num][0] = 1;
+    }
+
+    void print() {
+        cout << "--- num: " << num << "---" << endl;
+        for (int i = 0; i < image.row(); i++)
+            for (int j = 0; j < image.col(); j++)
+                cout << image[i][j] << " ";
+        cout << "-----------" << endl;
     }
 };
 
@@ -274,14 +274,13 @@ void normalize(vector<Point> &set) {
     }
 }
 
-//相关变量
 vector<Matrix> Weight;     // 权重
 vector<Matrix> Bias;       // 偏移量
 vector<Matrix> Error;      // 误差
 vector<Matrix> der_Weight; // 损失函数对权重偏导
 vector<Matrix> der_Bias;   // 损失函数对偏差偏导
-vector<Matrix> receive;    // 某层输入
-vector<Matrix> activation; // 某层输出
+vector<Matrix> Receive;    // 某层输入
+vector<Matrix> Activation; // 某层输出
 
 void initialize() {
     srand(time(nullptr));
@@ -297,15 +296,15 @@ void initialize() {
             }
     }
     // 初始化
-    receive.resize(LAYER_NUM);
-    activation.resize(LAYER_NUM);
+    Receive.resize(LAYER_NUM);
+    Activation.resize(LAYER_NUM);
     Bias.resize(LAYER_NUM);
     Error.resize(LAYER_NUM);
     der_Weight.resize(LAYER_NUM);
     der_Bias.resize(LAYER_NUM);
     for (int i = 1; i < LAYER_NUM; i++) {
-        receive[i].resize(NEURON_NUM[i], 1);
-        activation[i].resize(NEURON_NUM[i], 1);
+        Receive[i].resize(NEURON_NUM[i], 1);
+        Activation[i].resize(NEURON_NUM[i], 1);
         Bias[i].resize(NEURON_NUM[i], 1);
         Error[i].resize(NEURON_NUM[i], 1);
         der_Weight[i].resize(NEURON_NUM[i], NEURON_NUM[i - 1]);
@@ -315,27 +314,27 @@ void initialize() {
 
 // 对某个样本前向传播
 inline void forwardPropagation(const Point &point) {
-    activation[0] = point.image;
+    Activation[0] = point.image;
     for (int i = 1; i < LAYER_NUM; i++) {
-        receive[i] = Weight[i] * activation[i - 1];
-        activation[i] = receive[i].toSigmoidMatrix();
+        Receive[i] = Weight[i] * Activation[i - 1];
+        Activation[i] = Receive[i].toSigmoidMatrix();
     }
 }
 
 // 对某个样本反向传播
 inline void backPropagation(const Point &point) {
-    Error[LAYER_NUM - 1] = activation[LAYER_NUM - 1] - point.label;
+    Error[LAYER_NUM - 1] = Activation[LAYER_NUM - 1] - point.label;
     for (int i = LAYER_NUM - 2; i >= 1; i--) {
-        Matrix ONE(activation[i].row(), activation[i].col(), 1);
+        Matrix ONE(Activation[i].row(), Activation[i].col(), 1);
         Error[i] = (Weight[i + 1].transpose() * Error[i + 1]) ^
-                   (activation[i] ^ (ONE - activation[i]));
+                   (Activation[i] ^ (ONE - Activation[i]));
     }
 }
 
 // 将某个样本产生的偏导数累加
 inline void accumulateDerivative() {
     for (int i = 1; i < LAYER_NUM; i++) {
-        der_Weight[i] = der_Weight[i] + (Error[i] * activation[i - 1].transpose());
+        der_Weight[i] = der_Weight[i] + (Error[i] * Activation[i - 1].transpose());
         der_Bias[i] = der_Bias[i] + Error[i];
     }
 }
@@ -371,7 +370,7 @@ inline double evaluateStudy() {
     for (int i = 0; i < TRAIN_NUM; i++) {
         const Point &point = TrainData[i];
         forwardPropagation(point);
-        if (match(activation[LAYER_NUM - 1], point.label))
+        if (match(Activation[LAYER_NUM - 1], point.label))
             cnt++;
     }
     return (double) cnt / TRAIN_NUM;
@@ -383,7 +382,7 @@ inline double evaluateTest() {
     for (int i = 0; i < TEST_NUM; i++) {
         const Point &point = TestData[i];
         forwardPropagation(point);
-        if (match(activation[LAYER_NUM - 1], point.label))
+        if (match(Activation[LAYER_NUM - 1], point.label))
             cnt++;
     }
     return (double) cnt / TEST_NUM;
